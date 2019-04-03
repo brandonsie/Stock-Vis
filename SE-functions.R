@@ -112,8 +112,10 @@ taplot <- function(df){
 	
 	
 	#two axes
-	ym1 <- list(showline = FALSE, side = "left", overlaying = "y1", title = "Label 1" ,color = "red")
-	ym2 <- list(showline = FALSE, side = "right", overlaying = "y3",title = "Label 2",color = "blue")
+	ym1 <- list(showline = FALSE, side = "left", overlaying = "y1", 
+	            title = "Label 1" ,color = "red")
+	ym2 <- list(showline = FALSE, side = "right", overlaying = "y3",
+	            title = "Label 2",color = "blue")
 	
 	pmacd <- df %>%
 		plot_ly(x=~Date, y=~difference, type = 'bar', yaxis = "y2") %>%
