@@ -1,0 +1,194 @@
+---
+title: "stockEvaluator"
+author: "Brandon Sie"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document: 
+      code_folding: hide
+      toc: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r libs}
+
+
+
+```
+
+
+```{r}
+
+source("SE-functions.R")
+libcallStocks()
+
+# -- -- -- -- -- -- -- -- -- --
+# Data Setup
+# -- -- -- -- -- -- -- -- -- --
+
+# Get Data
+sym <- "AAPL"
+
+today <- Sys.Date()
+mindate <- ymd(today)-150
+
+
+df <- getfdata(sym)
+
+# (!) change Peroidicity
+
+
+#add EMAs
+df$EMA200 <- EMA(df$Close, 200)
+df$EMA50 <- EMA(df$Close, 50)
+
+# Technical Analysis (!) add PPO/others?
+
+
+ta.bbands <- getbbands(fdata) # EMA Bollinger Bands
+
+
+ta.macd <- getmacd(fdata) #MACD
+macd.crossdate <- df$Date[df$crossMACD == TRUE] %>% last
+macd.cross <- data.frame(Date = macd.crossdate,
+								Value = df$macd[df$Date == macd.crossdate],
+								Dir = df$macd_dir[df$Date == macd.crossdate])
+# ta.candle <- getcandlestick(fdata)
+
+#(!) rename bbands and macd variables etc
+
+# (!) identify Crossovers
+
+
+# join and subset data
+df <- cbind(fdata,ta.bbands,ta.macd)  
+
+
+
+# taplot(df)
+
+#(!) set standardized month tickmarks
+
+g1 <- 
+	ggplot(df %>% subset(Date >= mindate), 
+			 aes(x = Date, open = Open, high = High, low = Low, close = Close)) + 
+	scale_x_bd(business.dates = df$Date) +	ylab("USD") + 
+	theme(legend.position = "none") +
+	
+	# Bollinger Bands
+	geom_ribbon(aes(ymin = dn, ymax = up), fill = "lightskyblue2" , alpha = 0.3) + 
+	geom_line(aes(y = mavg), color = "dodgerblue4") + 
+	
+	# EMAs
+	geom_line(aes(y = EMA200), size = 1) + 
+	geom_line(aes(y = EMA50), size = 1, color = "gray45") +
+	
+	# Barchart
+	geom_candlestick() 
+	
+g2 <- 
+	ggplot(df %>% subset(Date >= mindate),
+				 aes(x = Date)) +	scale_x_bd(business.dates = df$Date) +	ylab("USD") + 
+	theme(legend.position = "none") +
+	
+	#MACD
+	geom_line(aes(y = macd)) +
+	geom_line(aes(y = signal), size = 1) +
+	# geom_vline(xintercept = last.cross.macd)
+	geom_point(aes(x = macd.cross$Date, y = macd.cross$Value,
+						 size = 3), color = ifelse(macd.cross$Dir == "Up", "green4", "red4"))
+	
+
+
+# https://cran.r-project.org/web/packages/egg/vignettes/Ecosystem.html
+library(grid)
+library(gtable)
+
+g1 %<>% ggplotGrob
+g2 %<>% ggplotGrobg <- rbind(g1,g2, size = "first")
+grid.newpage()
+grid.draw(g)
+
+
+```
+
+
+```{r}
+library(robinhoodr)
+
+hd_daily <- rh_historicals(symbols = "GOOG", 
+                           interval = "10minute", 
+                           span = "week", 
+                           bounds = "regular", 
+                           to_xts = FALSE)
+
+
+
+```
+
+
+ToDO
+robinhood integration
+for each ticker intraday, daily, two day, weekly, monthly charts
+for each chart, last crossover date +_ direction
+correlations
+
+use PPO not mACD  ppo = macd / longer moving average (12 and 26 day?)
+get stochastic oscillator stoch()
+and derivative oscillator (based on rsi)
+highlight graph when all are positive
+
+
+add vertical line for crossovers
+increase contrast bollinger band colors
+add week/month etc
+
+
+
+
+add long/short signals based oncrossover
+https://www.r-bloggers.com/an-example-of-a-trading-strategy-coded-in-r/
+
+
+# Add Volume Barchart Subplot
+#second y axis https://plot.ly/r/multiple-axes/
+
+
+  
+# plotv <- df %>%
+# 	  plot_ly(x=~Date, y=~Volume, type='bar', name = "Volume",
+# 	          color = ~direction, colors = c('#d34141','#26cf17')) %>%
+# 	  layout(yaxis = list(title = "Volume"),
+# 	  			 title = "Stock", yaxis = "ym1")
+
+#%>%
+  # layout(yaxis = list(title = "Volume"),
+  # 			 title = "Stock")
+
+
+## Notes
+http://rpubs.com/anishjoy1982/324594
+http://www.rpubs.com/tdwbiz/85228
+https://cran.r-project.org/web/packages/stocks/index.html
+https://rpubs.com/Felix/6653
+https://www.quantmod.com/examples/charting/#variants
+
+technical indicators list
+https://www.quantmod.com/examples/charting/#variants
+?TA
+newTa custom
+
+documentation chartseries
+https://www.rdocumentation.org/packages/quantmod/versions/0.4-13/topics/chartSeries
+
+look into highcharts interactive
+
+
+
+
+https://plot.ly/r/candlestick-charts/
+https://plot.ly/r/graphing-multiple-chart-types/

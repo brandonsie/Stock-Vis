@@ -2,10 +2,13 @@
 libcallStocks <- function(){
 	library(stocks)
 	library(quantmod)
+	library(robinhoodr)
 	
 	library(tidyquant)
 	library(ggplot2)
 	library(plotly)
+	
+	library(bdscale) #ignore weekends holidays
 	
 	library(data.table) #fread, fwrite
 	library(stats) #fisher.test
@@ -38,6 +41,9 @@ getmacd <- function(fdata){
 	ta.macd$difference <- ta.macd$macd - ta.macd$signal
 	ta.macd$prevdiff <- c(NA,ta.macd$difference[1:(length(ta.macd$difference)-1)])
 	ta.macd$crossMACD <- ta.macd$difference * ta.macd$prevdiff < 0
+	
+	ta.macd$macd_dir <- ifelse(ta.macd$difference - ta.macd$prevdiff > 0, "Up","Down")
+	
 	return(ta.macd)
 }
 
@@ -155,3 +161,123 @@ taplot <- function(df){
 					 							bgcolor = 'transparent'))
 	
 }
+
+
+
+
+
+# ==============================================================================
+# Overview Plot
+# Plot grid of closing price graphs for tickers of interest
+# ==============================================================================
+
+symbols <- c("SPY","QQQ","IWM","GLD","DIA","MSFT","AAPL",
+						 "BRK.B","BRK-B","AMZN","SH","PSQ","SDOW","DXD","ILMN",
+						 "NVDA","INTC")
+
+
+getRHdata <- function(symbols, interval, span){
+	data <- rh_historicals(
+		symbols = symbols, interval = interval, span = span, 
+		bounds = "regular", to_xts = FALSE) %>%	
+		rbindlist(use.names = TRUE, fill = TRUE, idcol = "ID")
+	data$ID %<>% factor(levels = data$ID %>% unique) #maintain order for plot
+	
+	#Add percentage
+	for(i in symbols) if(i %in% data$ID) {
+		data$Percent[data$ID == i] <- (data$close_price[data$ID == i]) / (data$close_price[data$ID == i][1])
+	}
+	
+	return(data)
+}
+
+stockFacetPlot <- function(
+	data, title, x = "begins_at", y = "close_price", scales = 'free_y', 
+	xlab = "Date", ylab = "Close", color = NA){
+	g <- ggplot(data, aes(x = eval(as.name(x)), y = eval(as.name(y)))) + geom_line() +
+				facet_wrap(.~ID, scales = scales) + 
+				xlab(xlab) + ylab(ylab) + ggtitle(title) +
+				theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+	
+	if(!is.na(color)){
+		g %<>% + geom_line(aes(color = eval(as.name(color))))
+	}
+	return(g)
+}
+
+
+percFacetPlot <- function(
+	data, title, x = "begins_at", y = "Percent", scales = 'fixed',
+	xlab = "Date", ylab = "Close", color = NA){
+	g <- ggplot(data, aes(x = eval(as.name(x)), y = eval(as.name(y)))) + geom_line() +
+		facet_wrap(.~ID, scales = scales) + 
+		xlab(xlab) + ylab(ylab) + ggtitle(title) +
+		theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+	
+	if(!is.na(color)){
+		g %<>% + geom_line(aes(color = eval(as.name(color))))
+	}
+	return(g)
+}
+
+
+
+
+StockOverview <- function(symbols){
+	
+	# ----------------------------------------------------------------------------
+	# Intraday
+	#(!) todo: convert close values to percentages relative to start of window
+	#(!) keep price as secondary free y axis
+	
+	#Gather Intraday Data from RobinhoodR
+	intra.data <- getRHdata(symbols, "10minute","week")
+	
+	#Facet Plot
+	intra.facet <- stockFacetPlot(intra.data, "Summary: Intraday")
+	intra.facet.perc <- percFacetPlot(intra.data, "Percentage Summary: Intraday")
+	
+	#Color Plot
+	
+	
+	#(!) convert to percentage
+	
+	# ----------------------------------------------------------------------------
+	# Daily & Weekly
+	
+	
+	#Gather Daily & Weekly Data from RobinhoodR
+	daily.data <- getRHdata(symbols,"day","year")
+	weekly.data <- getRHdata(symbols,"week","year")
+	merge.data <- rbindlist(list(daily.data,weekly.data) %>% 
+														setNames(c("Daily","Weekly")),
+													use.names = TRUE, fill = TRUE, idcol = "Period")
+	
+	merge.facet1 <- stockFacetPlot(merge.data, "Year Summary: Daily", color = "Period") + labs(col = "Period")
+	merge.facet2 <- stockFacetPlot(merge.data[merge.data$begins_at > (today() - 60)], "Two Month Summary: Daily", color = "Period") + labs(col = "Period")
+	
+	merge.facet1.perc <- percFacetPlot(merge.data, "Percentage Year Summary: Daily", color = "Period") + labs(col = "Period")
+	merge.facet2.perc <- percFacetPlot(merge.data[merge.data$begins_at > (today() - 60)], "Percentage Two Month Summary: Daily", color = "Period") + labs(col = "Period")
+	
+
+	
+	
+	#(!) do single plot with all stocks https://ntguardian.wordpress.com/2018/07/17/stock-data-analysis-python-v2/
+	#(!) one percent and one price
+	#(!) add zoom in last 60 days for daily
+	
+	#Load all, append symbol.intraday first
+	
+	#Intraday
+	
+	
+	#Daily
+	
+	
+	#Weekly
+	
+	
+	#Monthly
+	
+}
+
