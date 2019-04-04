@@ -3,6 +3,8 @@ libcallStocks <- function(){
 	library(stocks)
 	library(quantmod)
 	library(robinhoodr)
+  
+  # library(QuantTools)
 	
 	library(tidyquant)
 	library(ggplot2)
@@ -23,31 +25,128 @@ libcallStocks <- function(){
 	options(stringsAsFactors = FALSE)
 }
 
+getpct <- function(values, window = 20, method = "bbands"){
+  # calculate percentile (0 to 1) of value within last 60 intervals
+  if(length(values) < window) stop("Error: getpct: length(v) < w.")
 
-getfdata <- function(sym){
-	fdata.xts <- getSymbols(Symbols = sym, src = "yahoo", env=NULL)
-	fdata.df <- data.frame(Date = index(fdata.xts), coredata(fdata.xts)) %>% 
+  output <- data.frame(matrix(nrow = length(values), ncol = 3))
+  names(output) <- c("window_upper", "window_lower", "window_pct")
+  
+  if(method == "absolute"){
+    
+    for(i in window:length(values)){
+      window_values <- values[(i-window+1):i]
+      output$window_upper[i] <- max(window_values)
+      output$window_lower[i] <- min(window_values)
+      output$window_pct[i] <- (values[i] - min(window_values)) /
+        (max(window_values) - min(window_values))
+    }
+    
+  } else if(method == "bbands"){
+    bb <- TTR::BBands(values, window, maType = "EMA") %>% data.frame
+    output$window_upper <- bb$up
+    output$window_lower <- bb$dn
+    output$window_pct <- bb$pct
+    output$window_mavg <- bb$mavg
+  }
+  
+  return(output)
+
+
+}
+
+getema <- function(values, window){
+  TTR::EMA(values, window)
+}
+  
+getcrossover <- function(diff){
+  #takes difference vector
+  #checks if difference has changed sign since last interval
+  prevdiff <- c(NA, diff[1:(length(diff)-1)])
+  crossover <- diff * prevdiff < 0
+  direction <- ifelse(diff - prevdiff > 0 , "Up", "Dn")
+  
+  data.frame(prevdiff = prevdiff,
+             crossover = crossover,
+             direction = direction)
+}
+
+getfdata <- function(sym, period){
+	fdata.xts <- quantmod::getSymbols.yahoo(
+	  Symbols = sym, auto.assign = FALSE, periodicity = period)
+	fdata <- data.frame(Date = index(fdata.xts), coredata(fdata.xts)) %>% 
 		setnames(c("Date","Open","High","Low","Close","Volume","Adjusted"))
 	
-}
-
-getbbands <- function(fdata){
-	BBands(fdata[,c("High","Low","Close")], maType = "EMA") %>% data.frame
-}
-
-
-getmacd <- function(fdata){
-	ta.macd <- MACD(fdata$Close) %>% data.frame
-	ta.macd$difference <- ta.macd$macd - ta.macd$signal
-	ta.macd$prevdiff <- c(NA,ta.macd$difference[1:(length(ta.macd$difference)-1)])
-	ta.macd$crossMACD <- ta.macd$difference * ta.macd$prevdiff < 0
+	fdata$Close_Dir <- getcrossover(fdata$Close)$direction
+	fdata$Vol_Dir <- getcrossover(fdata$Volume)$direction
 	
-	ta.macd$macd_dir <- ifelse(ta.macd$difference - ta.macd$prevdiff > 0, "Up","Down")
-	
-	return(ta.macd)
+	return(fdata)
+}
+
+addbbands <- function(fdata){
+	bb <- BBands(fdata[,c("High","Low","Close")], maType = "EMA") %>% data.frame
+  colnames(bb) <- c("BB_Lower", "BB_Mavg", "BB_Upper", "BB_Pct")
+  fdata <- cbind(fdata, bb)
+  
+  fdata$BB_Diff <- fdata$Close - fdata$BB_Mavg
+  cross <- getcrossover(fdata$BB_Diff)
+  fdata$BB_Cross <- cross$crossover
+  fdata$BB_Dir <- cross$direction
+  
+  return(fdata)
 }
 
 
+addmacd <- function(fdata){
+  macd <- MACD(fdata$Close) %>% data.frame
+  fdata$MACD_Value <- macd$macd
+  fdata$MACD_Signal <- macd$signal
+  fdata$MACD_Diff <- macd$macd - macd$signal
+  
+  cross <- getcrossover(fdata$MACD_Diff)
+  fdata$MACD_Cross <- cross$crossover
+  fdata$MACD_Dir <- cross$direction
+  
+  return(fdata)
+  
+	# ta.macd$difference <- ta.macd$macd - ta.macd$signal
+	# ta.macd$prevdiff <- c(NA,ta.macd$difference[1:(length(ta.macd$difference)-1)])
+	# ta.macd$crossMACD <- ta.macd$difference * ta.macd$prevdiff < 0
+	# ta.macd$macd_dir <- ifelse(ta.macd$difference - ta.macd$prevdiff > 0, "Up","Down")
+	
+	# 
+	# colnames(ta.macd) <- c("MACD_Value", "MACD_Signal","MACD_Diff",
+	#                        "MACD_PrevDiff", "MACD_Cross", "MACD_Dir")
+	
+	
+	# cbind(fdata, ta.macd)
+}
+
+addsymbol <- function(fdata, sym){
+  fdata$Symbol = sym
+  return(fdata)
+}
+
+addema <- function(fdata){
+  
+  fdata$EMA_50 <- getema(fdata$Close, 50)
+  fdata$EMA_50_Diff <- fdata$Close - fdata$EMA_50
+  cross50 <- getcrossover(fdata$EMA_50_Diff)
+  fdata$EMA_50_Cross <- cross50$crossover
+  fdata$EMA_50_Dir <- cross50$direction
+  
+  fdata$EMA_200 <- getema(fdata$Close, 200)
+  fdata$EMA_200_Diff <- fdata$Close - fdata$EMA_200
+  cross200 <- getcrossover(fdata$EMA_200_Diff)
+  fdata$EMA_200_Cross <- cross200$crossover
+  fdata$EMA_200_Dir <- cross200$direction
+  
+  
+  return(fdata)
+}
+
+
+#---
 getcandlestick <- function(fdata){
 	
 	for (i in 1:length(fdata[,1])) {
